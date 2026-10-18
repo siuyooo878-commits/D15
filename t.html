@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Why do fighter jets create white clouds?</title>
+<style>
+:root{--ink:#eef4fb;--mut:#a9bbcc;--acc:#5fd0ff}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#0b1522;color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#app{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+#chip{position:absolute;left:14px;top:calc(12px + env(safe-area-inset-top,0px));padding:6px 12px;border-radius:999px;background:rgba(8,18,32,.55);backdrop-filter:blur(8px);font-size:13px}
+#cap{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(78px + env(safe-area-inset-bottom,0px));width:min(92vw,760px);text-align:center;font-size:clamp(15px,2vw + 10px,24px);font-weight:600;line-height:1.3;text-shadow:0 1px 14px rgba(5,12,24,.95),0 0 3px rgba(5,12,24,.85);transition:opacity .25s;pointer-events:none}
+.tag{position:absolute;left:0;top:0;padding:4px 9px;border-radius:6px;background:rgba(8,18,32,.7);border:1px solid rgba(95,208,255,.6);font-size:12.5px;white-space:nowrap;opacity:0;pointer-events:none}
+#bar{position:absolute;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:14px;background:rgba(8,18,32,.62);backdrop-filter:blur(10px)}
+button{font:inherit;color:var(--ink);background:rgba(255,255,255,.1);border:0;border-radius:9px;padding:8px 13px;cursor:pointer;min-height:38px}
+button:hover{background:rgba(255,255,255,.2)}button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#seek{flex:1;accent-color:var(--acc);min-width:50px}#tm{font-variant-numeric:tabular-nums;color:var(--mut);min-width:6.4em;text-align:right;font-size:13px}
+#load{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(rgba(11,21,34,.5),rgba(11,21,34,.84));transition:opacity .5s}
+#load.off{opacity:0;pointer-events:none}#lbox{text-align:center;padding:24px;max-width:540px}
+#lbox h1{font-size:clamp(22px,5vw,34px);margin:0 0 10px;line-height:1.15}
+#lmsg{color:var(--mut);margin:0 0 18px}.err #lmsg{color:#ffb4a8}#go{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#go button{background:var(--acc);color:#04202e;font-weight:600}#go button+button{background:rgba(255,255,255,.16);color:var(--ink)}
+@media(max-width:560px){#bar{gap:6px;padding:6px 8px}button{padding:8px 9px}#tm{display:none}.tag{font-size:11.5px}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="app">
+<canvas id="c" aria-label="3D animation: a fighter jet forms a white vapor cloud around its wings"></canvas>
+<div id="chip"></div><div id="tags"></div><div id="cap" aria-live="polite"></div>
+<div id="bar"><button id="pp">Play</button><button id="rp">Restart</button><input id="seek" type="range" min="0" max="25" step="0.01" value="0" aria-label="Timeline"><span id="tm">0.0 / 25 s</span><button id="snd" title="Synthesized jet-like sound, not a recording">Sound off</button></div>
+<div id="load"><div id="lbox"><h1>Why do fighter jets create white clouds?</h1><p id="lmsg">Loading 3D engine…</p><div id="go" hidden><button id="goS">Play with sound</button><button id="goM">Play muted</button></div></div></div>
+</div>
+<noscript><p style="position:fixed;top:40%;width:100%;text-align:center">This animation needs JavaScript and WebGL.</p></noscript>
+<script id="glb" type="application/octet-stream">__GLB__</script>
+<script type="module">
+const $=id=>document.getElementById(id),clamp=(x,a,b)=>Math.min(b,Math.max(a,x)),sm=(a,b,x)=>{x=clamp((x-a)/(b-a),0,1);return x*x*(3-2*x)},lerp=(a,b,u)=>a+(b-a)*u,T=25;
+const fail=m=>{const l=$('load');l.classList.remove('off');l.classList.add('err');$('lmsg').textContent=m;$('go').hidden=true;};
+async function main(){
+let THREE,GLTFLoader,DRACOLoader;
+try{THREE=await import('three');({GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js'));({DRACOLoader}=await import('three/addons/loaders/DRACOLoader.js'));}
+catch(e){console.error(e);return fail('The 3D engine (Three.js 0.160.0 from cdn.jsdelivr.net) could not be loaded. Check your connection and reload. A modern browser with import-map support is required.');}
+$('lmsg').textContent='Building the sky and decoding the F-15 model…';
+const mobile=Math.min(innerWidth,innerHeight)<620||/Android|iPhone|iPad/i.test(navigator.userAgent);
+let renderer;try{renderer=new THREE.WebGLRenderer({canvas:$('c'),antialias:!mobile,powerPreference:'high-performance'});}catch(e){console.error(e);return fail('WebGL is not available in this browser, so the 3D animation cannot run.');}
+$('c').addEventListener('webglcontextlost',e=>{e.preventDefault();fail('The graphics context was lost. Reload the page to continue.');});
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.92;
+const gl=renderer.getContext(),maxPt=Math.min(256,gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1]);
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(40,1,.2,20000),AX=new THREE.Vector3(1,0,0),AY=new THREE.Vector3(0,1,0),AZ=new THREE.Vector3(0,0,1),UP=AY;
+const _P=new THREE.Vector3(),_Q=new THREE.Quaternion(),_v=new THREE.Vector3();
+let s0=12345;const rng=()=>(s0=(s0*16807)%2147483647)/2147483647; // seeded: replays are identical
+// ---- sky, environment light, background clouds (kept grey and distant so they never read as the vapor)
+const skyMat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{sun:{value:new THREE.Vector3(-.45,.55,.7).normalize()}},
+vertexShader:'varying vec3 d;void main(){d=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+fragmentShader:`varying vec3 d;uniform vec3 sun;
+void main(){float h=clamp(d.y,-.2,1.);vec3 z=vec3(.045,.19,.52),m=vec3(.21,.44,.8),hz=vec3(.62,.76,.92);
+vec3 c=mix(hz,m,smoothstep(0.,.28,h));c=mix(c,z,smoothstep(.2,.9,h));c=mix(c,hz*.9,smoothstep(0.,-.2,d.y)*.8);
+float s=max(dot(d,sun),0.);c+=vec3(1.,.82,.55)*(pow(s,600.)*3.+pow(s,10.)*.14);gl_FragColor=vec4(c,1.);
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
+}`});
+const envScene=new THREE.Scene();envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,32,16),skyMat));
+scene.environment=new THREE.PMREMGenerator(renderer).fromScene(envScene,.03).texture;
+const sky=new THREE.Mesh(new THREE.SphereGeometry(1,32,16),skyMat);sky.scale.setScalar(9000);sky.frustumCulled=false;sky.renderOrder=-1;scene.add(sky);
+const sunL=new THREE.DirectionalLight(0xfff1dc,2.4);sunL.position.copy(skyMat.uniforms.sun.value).multiplyScalar(100);scene.add(sunL,new THREE.HemisphereLight(0xbfd8ff,0x6a7f9a,.5));
+const cc=document.createElement('canvas');cc.width=256;cc.height=128;
+{const x=cc.getContext('2d');for(let i=0;i<34;i++){const px=128+(rng()+rng()+rng()-1.5)*90,py=70+(rng()+rng()-1)*22-Math.abs(px-128)*.1,r=14+rng()*30,g=x.createRadialGradient(px,py,0,px,py,r);g.addColorStop(0,'rgba(255,255,255,.3)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,256,128);}}
+const ctex=new THREE.CanvasTexture(cc);ctex.colorSpace=THREE.SRGBColorSpace;const clouds=[];
+for(let i=0;i<18;i++){const a=rng()*6.283,d=900+rng()*3500,sp=new THREE.Sprite(new THREE.SpriteMaterial({map:ctex,color:0xd2dce8,transparent:true,depthWrite:false,fog:false})),w=700+rng()*1300;sp.position.set(Math.cos(a)*d+600,2600+(rng()-.55)*1000,Math.sin(a)*d);sp.scale.set(w,w*.5,1);sp.userData.o=.35+rng()*.3;scene.add(sp);clouds.push(sp);}
+// ---- aircraft: the supplied GLB, hierarchy untouched, placed inside wrapper groups
+const root=new THREE.Group(),align=new THREE.Group();root.add(align);scene.add(root);
+const b64=$('glb').textContent.trim(),bin=atob(b64),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);$('glb').remove();
+const dr=new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
+const gltf=await new Promise((ok,no)=>new GLTFLoader().setDRACOLoader(dr).parse(u8.buffer,'',ok,no)).catch(e=>{throw new Error('The aircraft model (GLB) could not be decoded: '+(e&&e.message||e));});
+dr.dispose();
+// Correction (documented): the file's own node chain leaves the nose on +X, up on +Y, wings along Z, at 10 units per metre -> scale 0.1 puts 1 scene unit = 1 m.
+align.scale.setScalar(.1);align.add(gltf.scene);
+let frame,canopy;gltf.scene.traverse(o=>{if(!o.isMesh)return;const n=(o.parent?o.parent.name:'')+o.name;
+ if(/landingOn/i.test(n))o.visible=false; // the file ships gear-down and gear-up variants; flight uses the retracted one
+ if(/airframe/i.test(n))frame=o;if(/canopy/i.test(n))canopy=o;[].concat(o.material).forEach(m=>{m.envMapIntensity=1.15;});o.frustumCulled=false;});
+if(!frame)throw new Error('Airframe mesh not found in the GLB.');
+align.updateMatrixWorld(true);
+let bb=new THREE.Box3().setFromObject(frame);const sz=bb.getSize(new THREE.Vector3());
+if(sz.z>sz.x){align.rotation.y=Math.PI/2;align.updateMatrixWorld(true);bb.setFromObject(frame);} // fuselage axis guard
+if(canopy&&new THREE.Box3().setFromObject(canopy).getCenter(new THREE.Vector3()).x<(bb.min.x+bb.max.x)/2){align.rotation.y+=Math.PI;align.updateMatrixWorld(true);bb.setFromObject(frame);} // nose-direction guard
+align.position.set(-(bb.min.x+.52*(bb.max.x-bb.min.x)),-(bb.min.y+.3*(bb.max.y-bb.min.y)),0);align.updateMatrixWorld(true);
+// ---- landmarks measured from the real airframe vertices (aircraft frame, metres): wing planform, tip, nozzles
+const LM=(()=>{frame.updateWorldMatrix(true,false);
+const Pa=frame.geometry.attributes.position,n=Pa.count,v=new THREE.Vector3(),X=new Float32Array(n),Y=new Float32Array(n),Z=new Float32Array(n);let zm=0,x0=1e9;
+for(let i=0;i<n;i++){v.fromBufferAttribute(Pa,i).applyMatrix4(frame.matrixWorld);X[i]=v.x;Y[i]=v.y;Z[i]=v.z;zm=Math.max(zm,Math.abs(v.z));x0=Math.min(x0,v.x);}
+const N=14,zs=[],le=[],te=[],ys=[];
+for(let k=0;k<N;k++){const z=zm*(.34+.655*k/(N-1)),idx=[],hist={};
+ for(let i=0;i<n;i++)if(Math.abs(Math.abs(Z[i])-z)<.16){idx.push(i);const b=Math.round(Y[i]/.12);hist[b]=(hist[b]||0)+1;}
+ let bm=0,bc=-1;for(const b in hist)if(hist[b]>bc){bc=hist[b];bm=+b;}
+ const y0=bm*.12;let a=-1e9,c=1e9,t=-1e9;
+ for(const i of idx)if(Y[i]>y0-.3&&Y[i]<y0+.6){a=Math.max(a,X[i]);c=Math.min(c,X[i]);t=Math.max(t,Y[i]);}
+ zs.push(z);le.push(a);te.push(c);ys.push(t);}
+if(le.some((a,k)=>!isFinite(a)||!isFinite(te[k])||a-te[k]<.3))for(let k=0;k<N;k++){const f=k/(N-1);zs[k]=zm*(.34+.655*f);le[k]=1-5.5*f;te[k]=-4.6-1.8*f;ys[k]=.45;} // estimate only if measurement failed
+const nz=[];for(const sg of[1,-1]){let sx=0,sy=0,sz2=0,c=0;for(let i=0;i<n;i++)if(X[i]<x0+.4&&Math.abs(Z[i])<2.6&&Z[i]*sg>0){sx+=X[i];sy+=Y[i];sz2+=Z[i];c++;}
+ nz.push(c>3?new THREE.Vector3(sx/c-.3,sy/c,sz2/c):new THREE.Vector3(x0,.2,sg));}
+return{zs,le,te,ys,zm,nz,N};})();
+const wing=z=>{z=Math.abs(z);const{zs,le,te,ys,N}=LM;let k=0;while(k<N-2&&zs[k+1]<z)k++;const u=clamp((z-zs[k])/(zs[k+1]-zs[k]),0,1.2),L=a=>a[k]+(a[k+1]-a[k])*u;return[L(le),L(te),L(ys)];};
+const mk=Math.floor(LM.N*.42),M=new THREE.Vector3((LM.le[mk]+LM.te[mk])/2,LM.ys[mk],LM.zs[mk]),N1=LM.N-1,Tp=new THREE.Vector3(LM.le[N1]-.35*(LM.le[N1]-LM.te[N1]),LM.ys[N1],LM.zm);
+const mkLoc=(k,u,dy)=>new THREE.Vector3(lerp(LM.le[k],LM.te[k],u),LM.ys[k]+dy,LM.zs[k]),A1=mkLoc(mk,.3,.5),A2=mkLoc(mk+1,.6,.9);
+// ---- flight path: banked left turn (heading rate = g*tan(bank)/V), tabulated once so every effect is a pure function of time t
+const V=120,G=9.81,TS=-10,H=.01,NS=Math.round((T-TS)/H)+1,tx=new Float32Array(NS),ty=new Float32Array(NS),tz=new Float32Array(NS),tp=new Float32Array(NS);
+const bank=t=>1.08*sm(.2,3.2,t)*(1-sm(14,19.5,t)),pitch=t=>.05*sm(0,3,t)+.1*sm(16,22,t);
+{let x=0,y=2600,z=0,ps=0;for(let i=0;i<NS;i++){const t=TS+i*H,th=pitch(t);tx[i]=x;ty[i]=y;tz[i]=z;tp[i]=ps;ps+=G*Math.tan(bank(t))/V*H;x+=V*Math.cos(th)*Math.cos(ps)*H;z-=V*Math.cos(th)*Math.sin(ps)*H;y+=V*Math.sin(th)*H;}}
+const q1=new THREE.Quaternion(),q2=new THREE.Quaternion(),qa=new THREE.Quaternion();
+function poseAt(t,P,Q){t=clamp(t,TS,T);const f=(t-TS)/H,i=Math.min(NS-2,f|0),u=f-i,l=a=>a[i]+(a[i+1]-a[i])*u,ps=l(tp);P.set(l(tx),l(ty),l(tz));Q.setFromAxisAngle(AY,ps).multiply(q1.setFromAxisAngle(AZ,pitch(t))).multiply(q2.setFromAxisAngle(AX,-bank(t)));return ps;}
+// ---- vapor: soft particles whose state depends only on t (no stateful spawning), anchored to measured wing geometry
+const vsrc=`attribute vec4 aS;uniform float uT,uV,uSz,uPx,uMode,uMax,uGr;varying float vA,vR;
+void main(){float a=aS.x;vec3 p=position;
+if(uMode<.5){a=fract(uT*.33*(.6+.8*aS.y)+aS.x);p.x-=a*(.7+.8*aS.y);p.y+=a*.18;p.z+=(aS.w-.5)*.35*a;}
+float on=uMode<.5?smoothstep(aS.z,aS.z+.18,uV):uV;
+float env=uMode<.5?sin(3.1416*a):smoothstep(0.,.05,a)*(1.-a);
+vA=on*env;vR=aS.w;vec4 mv=modelViewMatrix*vec4(p,1.);
+gl_PointSize=min(uSz*(.55+aS.w*.9)*(.65+uGr*a)*uPx/-mv.z,uMax);gl_Position=projectionMatrix*mv;}`;
+const fsrc=`uniform vec3 uC;uniform float uO;varying float vA,vR;
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1.,0.)),f.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),f.x),f.y);}
+void main(){vec2 c=gl_PointCoord*2.-1.;float r=length(c);if(r>1.)discard;float k=n(c*3.+vR*19.)*.6+n(c*7.-vR*7.)*.4;
+float a=smoothstep(1.,.1,r)*(.3+.7*k)*vA*uO;vec3 col=uC*(.8+.2*smoothstep(-.7,.8,c.y+k*.3));gl_FragColor=vec4(col,a);}`;
+const pmats=[],C=mobile?.55:1;
+const mat=(mode,col,o,sz,gr)=>{const m=new THREE.ShaderMaterial({vertexShader:vsrc,fragmentShader:fsrc,transparent:true,depthWrite:false,uniforms:{uT:{value:0},uV:{value:0},uSz:{value:sz},uPx:{value:600},uMode:{value:mode},uMax:{value:maxPt},uGr:{value:gr},uC:{value:new THREE.Vector3(...col)},uO:{value:o}}});pmats.push(m);return m;};
+const mkPts=(pos,as,m)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3).setUsage(THREE.DynamicDrawUsage));g.setAttribute('aS',new THREE.BufferAttribute(as,4));const p=new THREE.Points(g,m);p.frustumCulled=false;p.renderOrder=6;return p;};
+function wingPts(n,fine,m){const pos=new Float32Array(n*3),as=new Float32Array(n*4);
+for(let i=0;i<n;i++){const sd=i%2?1:-1,sp=Math.pow(rng(),1.1),z=LM.zs[0]+(LM.zm*.985-LM.zs[0])*(.06+.94*sp),w=wing(z),u=.1+.85*Math.pow(rng(),.85);
+pos.set([w[0]+(w[1]-w[0])*u,w[2]+.08+rng()*(fine?.45:.3),sd*z],i*3);
+as.set([rng(),rng(),clamp(.1+.62*(.55*Math.abs(sp-.4)/.6+.45*rng()),0,.82),rng()],i*4);}
+return mkPts(pos,as,m);}
+const trailPts=(per,m)=>{const n=per*2,as=new Float32Array(n*4);for(let j=0;j<n;j++)as.set([((j%per)+.5)/per,rng(),0,rng()],j*4);return mkPts(new Float32Array(n*3),as,m);};
+const wingC=wingPts(Math.round(2200*C),false,mat(0,[.95,.97,1],.9,.62,.7)),wingF=wingPts(Math.round(2600*C),true,mat(0,[.97,.98,1],.95,.08,.5));
+wingF.renderOrder=7;root.add(wingC,wingF);
+const nv=Math.round(150*C),nc=Math.round(260*C),AV=2.2,AC=9,cr=new Float32Array(nc*6).map(()=>rng()-.5);
+const vor=trailPts(nv,mat(1,[.93,.96,1],.8,.5,1.4)),con=trailPts(nc,mat(1,[.97,.98,1],.5,2.2,2.5));scene.add(vor,con);
+function updVortex(t){const p=vor.geometry.attributes.position;for(let s=0;s<2;s++){const sg=s?-1:1;for(let i=0;i<nv;i++){const a=(i+.5)/nv,age=a*AV,ph=9*age+(s?3.14:0),r=.05+.5*Math.pow(a,.8);
+_v.set(Tp.x-.4*a,Tp.y+r*Math.cos(ph),sg*Tp.z+r*Math.sin(ph));poseAt(t-age,_P,_Q);_v.applyQuaternion(_Q).add(_P);p.setXYZ(s*nv+i,_v.x,_v.y,_v.z);}}p.needsUpdate=true;}
+function updContrail(t){const p=con.geometry.attributes.position;for(let s=0;s<2;s++)for(let i=0;i<nc;i++){const a=(i+.5)/nc,age=a*AC,k=s*nc+i;
+if(age>t-15.4){p.setXYZ(k,0,-1e6,0);continue;} // the trail only exists once it has formed
+poseAt(t-age,_P,_Q);_v.copy(LM.nz[s]).applyQuaternion(_Q).add(_P);const sp=.2+2.2*a;p.setXYZ(k,_v.x+cr[3*k]*sp,_v.y+cr[3*k+1]*sp*.8+.5*a,_v.z+cr[3*k+2]*sp);}p.needsUpdate=true;}
+// ---- explanatory layer: low-pressure patch on the upper wing + streamlines, both built from the measured planform
+const rvs='attribute vec2 aR;varying vec2 q;void main(){q=aR;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}';
+const mkOv=(fs,geo,ro)=>{const m=new THREE.ShaderMaterial({vertexShader:rvs,fragmentShader:fs,transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{uT:{value:0},uV:{value:0}}});const o=new THREE.Mesh(geo,m);o.renderOrder=ro;o.frustumCulled=false;root.add(o);return m;};
+const geo=(pos,aR,idx)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('aR',new THREE.Float32BufferAttribute(aR,2));g.setIndex(idx);return g;};
+const patch=(()=>{const pos=[],aR=[],idx=[];let o=0;for(const sg of[1,-1]){for(let k=0;k<LM.N;k++)for(let c=0;c<5;c++){const u=c/4;pos.push(lerp(LM.le[k],LM.te[k],u),LM.ys[k]+.07,sg*LM.zs[k]);aR.push(u,k/(LM.N-1));}
+for(let k=0;k<LM.N-1;k++)for(let c=0;c<4;c++){const a=o+k*5+c;idx.push(a,a+1,a+5,a+1,a+6,a+5);}o+=LM.N*5;}
+return mkOv('uniform float uV;varying vec2 q;void main(){float z=(q.x-.3)/.3;float p=exp(-z*z)*smoothstep(.04,.3,q.y)*(1.-.45*q.y);gl_FragColor=vec4(.2,.72,1.,p*uV*.55);}',geo(pos,aR,idx),3);})();
+const flow=(()=>{const pos=[],aR=[],idx=[];let o=0;for(const sg of[1,-1])for(let k=0;k<9;k++){const z=LM.zs[0]*1.05+(LM.zm*.93-LM.zs[0]*1.05)*k/8,w=wing(z),x0=w[0]+2.2,x1=w[1]-2.4,ph=rng(),xc=(w[0]+w[1])/2,ch=Math.abs(w[0]-w[1]);
+for(let j=0;j<=36;j++){const u=j/36,x=lerp(x0,x1,u),zz=(x-xc)/(ch*.45),y=w[2]+.14+.2*Math.exp(-zz*zz)+.5*Math.exp(-Math.pow((x-w[0]-1.2)/1.4,2));
+for(const dz of[-.05,.05]){pos.push(x,y,sg*z+dz);aR.push(u,ph);}if(j<36){const b=o+j*2;idx.push(b,b+1,b+2,b+1,b+3,b+2);}}o+=74;}
+return mkOv('uniform float uT,uV;varying vec2 q;void main(){float d=fract(q.x*5.-uT*.9+q.y);float dash=smoothstep(0.,.12,d)*smoothstep(.62,.38,d);float z=(q.x-.5)/.22;vec3 c=mix(vec3(.78,.9,1.),vec3(.25,.78,1.),exp(-z*z));float e=smoothstep(0.,.1,q.x)*smoothstep(1.,.88,q.x);gl_FragColor=vec4(c,dash*e*uV*.9);}',geo(pos,aR,idx),4);})();
+// ---- camera choreography: keyframes in the aircraft body frame ('b') or heading frame ('y'); Hermite-interpolated for momentum
+const K=[{t:0,f:'b',p:[9.5,3.4,21],l:[-.5,.4,0],fov:42,k:.1},
+{t:4.2,f:'b',p:[M.x-5.4,M.y+6.4,M.z+7.2],l:[M.x-1.2,M.y+.2,M.z+.4],fov:36,k:.7},
+{t:8.8,f:'b',p:[M.x-3.6,M.y+3.5,M.z+5],l:[M.x-1.5,M.y+.4,M.z+.2],fov:34,k:.7},
+{t:13,f:'b',p:[Tp.x+2,Tp.y+2.2,Tp.z+6],l:[Tp.x-5.2,Tp.y+.2,Tp.z-.2],fov:36,k:.5},
+{t:17.6,f:'y',p:[-22,6,25],l:[-6,0,0],fov:44,k:0},
+{t:25,f:'y',p:[-5,4.6,38],l:[-11,.5,0],fov:40,k:0}];
+const kp=K.map(()=>new THREE.Vector3()),kl=K.map(()=>new THREE.Vector3()),ku=K.map(()=>new THREE.Vector3()),_ta=new THREE.Vector3(),_tb=new THREE.Vector3(),_a=new THREE.Vector3(),_b=new THREE.Vector3();
+const herm=(a,b,ma,mb,h,u,o)=>{const u2=u*u,u3=u2*u;return o.copy(a).multiplyScalar(2*u3-3*u2+1).addScaledVector(b,3*u2-2*u3).addScaledVector(ma,(u3-2*u2+u)*h).addScaledVector(mb,(u3-u2)*h);};
+const tang=(arr,i,o)=>(i<=0||i>=K.length-1)?o.set(0,0,0):o.copy(arr[i+1]).sub(arr[i-1]).divideScalar(K[i+1].t-K[i-1].t);
+function cam(t){const ps=poseAt(t,_P,_Q);qa.setFromAxisAngle(AY,ps);_a.copy(UP).applyQuaternion(_Q);
+K.forEach((k,i)=>{const q=k.f==='b'?_Q:qa;kp[i].set(...k.p).applyQuaternion(q).add(_P);kl[i].set(...k.l).applyQuaternion(q).add(_P);ku[i].copy(UP).lerp(_a,k.k).normalize();});
+let s=0;while(s<K.length-2&&t>=K[s+1].t)s++;const h=K[s+1].t-K[s].t,u=clamp((t-K[s].t)/h,0,1),e=u*u*(3-2*u);
+herm(kp[s],kp[s+1],tang(kp,s,_ta),tang(kp,s+1,_tb),h,u,camera.position);
+herm(kl[s],kl[s+1],tang(kl,s,_ta),tang(kl,s+1,_tb),h,u,_b);
+camera.up.copy(ku[s]).lerp(ku[s+1],e).normalize();camera.lookAt(_b);
+let f=lerp(K[s].fov,K[s+1].fov,e);if(camera.aspect<1.3)f*=Math.min(1.8,1.3/camera.aspect);camera.fov=Math.min(f,80);camera.updateProjectionMatrix();}
+// ---- captions, anchored labels, controls
+const CAP=[[0,'In a hard turn, a fighter can suddenly wrap its wings in a white cloud. Why?'],[4,'A wing makes lift by lowering the pressure above it, and air that expands cools.'],[9,'In humid air, that cooling can condense water vapor into tiny droplets that scatter light.'],[14.2,'When the pressure recovers, the droplets evaporate. The cloud was temporary.'],[17.6,'An exhaust contrail is different: engine exhaust freezing into ice crystals in very cold air.'],[22,'Wing vapor: a brief pressure drop in humid air. Contrail: ice crystals at altitude.']];
+const tags=[{a:4.6,b:8.8,txt:'Lower pressure, cooler air',loc:A1},{a:9.6,b:13.6,txt:'Vapor condenses into droplets',loc:A2},{a:14.6,b:17.4,txt:'Pressure recovers, droplets evaporate',loc:A2},{a:18.8,b:25.1,txt:'Exhaust contrail: ice crystals',trail:1}];
+tags.forEach(o=>{o.el=document.createElement('div');o.el.className='tag';o.el.textContent=o.txt;$('tags').appendChild(o.el);});
+let ci=-1,chipT='',t=0,playing=false,ended=false,sound=false,drag=false,raf=0,last=performance.now();
+const sk=$('seek'),pp=$('pp'),ps2=new THREE.Vector2();
+function setCap(t,now){let i=0;while(i<CAP.length-1&&t>=CAP[i+1][0])i++;if(i===ci)return;const first=ci<0;ci=i;const c=$('cap');clearTimeout(c._t);if(first){c.textContent=CAP[i][1];return;}c.style.opacity=0;c._t=setTimeout(()=>{c.textContent=CAP[ci][1];c.style.opacity=1;},160);}
+const setUI=()=>{pp.textContent=playing?'Pause':(ended?'Replay':'Play');$('snd').textContent=sound?'Sound on':'Sound off';};
+// ---- audio: synthesized jet-like rumble + airflow hiss; created only from a user gesture
+let ac,mg,lp,wg;
+function audioInit(){if(ac){ac.resume();return;}const AC2=window.AudioContext||window.webkitAudioContext;if(!AC2)return;ac=new AC2();
+const nb=br=>{const len=ac.sampleRate*4,b=ac.createBuffer(1,len,ac.sampleRate),d=b.getChannelData(0);let l=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;if(br){l=(l+.02*w)/1.02;d[i]=l*3.2;}else d[i]=w*.5;}const s=ac.createBufferSource();s.buffer=b;s.loop=true;s.start();return s;};
+mg=ac.createGain();mg.gain.value=0;lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=420;nb(1).connect(lp).connect(mg);
+const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1800;bp.Q.value=.7;wg=ac.createGain();wg.gain.value=0;nb(0).connect(bp).connect(wg).connect(mg);mg.connect(ac.destination);}
+function audioUpdate(t){if(!ac)return;const n=ac.currentTime;mg.gain.setTargetAtTime(sound&&playing?.6:0,n,.08);lp.frequency.setTargetAtTime(380+520*sm(0,3.5,t)-200*sm(19,25,t),n,.15);wg.gain.setTargetAtTime(.1*sm(1,4,t)*(1-sm(13,18,t))+.04*sm(15.5,19,t),n,.2);}
+function start(s){sound=s;if(s)audioInit();t=0;playing=true;ended=false;$('load').classList.add('off');setUI();}
+pp.onclick=()=>{if(ended){t=0;ended=false;}playing=!playing;if(playing&&sound)audioInit();setUI();};
+$('rp').onclick=()=>{t=0;ended=false;playing=true;if(sound)audioInit();setUI();};
+$('snd').onclick=()=>{sound=!sound;if(sound)audioInit();setUI();};
+$('goS').onclick=()=>start(true);$('goM').onclick=()=>start(false);
+sk.oninput=()=>{t=+sk.value;ended=t>=T;if(ended)playing=false;setUI();};sk.onpointerdown=()=>{drag=true;};addEventListener('pointerup',()=>{drag=false;});
+addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();pp.click();}});
+// ---- per-frame update: everything below is a pure function of t
+function update(t){
+poseAt(t,root.position,root.quaternion);root.updateMatrixWorld(true);cam(t);sky.position.copy(camera.position);
+const px=ps2.y/(2*Math.tan(camera.fov*Math.PI/360));
+const vC=(.38*sm(1.2,4,t)+.62*sm(8.6,11.6,t))*(1-sm(14.2,17.4,t)),vF=sm(1.4,4.5,t)*(1-sm(12.6,16,t)),vo=sm(2.2,5.5,t)*(1-sm(14.2,17.4,t)),co=sm(15.2,17.8,t);
+pmats.forEach(m=>{m.uniforms.uT.value=t;m.uniforms.uPx.value=px;});
+wingC.material.uniforms.uV.value=vC;wingF.material.uniforms.uV.value=vF;vor.material.uniforms.uV.value=vo;con.material.uniforms.uV.value=co;
+patch.uniforms.uV.value=sm(3.8,5.6,t)*(1-sm(8.6,11,t));flow.uniforms.uV.value=sm(4,5.4,t)*(1-sm(9.4,12,t));flow.uniforms.uT.value=t;
+updVortex(t);updContrail(t);
+for(const c of clouds)c.material.opacity=c.userData.o*sm(250,900,c.position.distanceTo(camera.position));
+const W=innerWidth,Hh=innerHeight;
+for(const o of tags){const op=sm(o.a,o.a+.5,t)*(1-sm(o.b-.5,o.b,t));
+if(o.trail){poseAt(t-2.8,_P,_Q);_v.copy(LM.nz[0]).applyQuaternion(_Q).add(_P);_v.y+=1.6;}else root.localToWorld(_v.copy(o.loc));
+_v.project(camera);const vis=op>.02&&_v.z<1;o.el.style.opacity=vis?op:0;if(vis)o.el.style.transform='translate('+((_v.x*.5+.5)*W)+'px,'+((-_v.y*.5+.5)*Hh)+'px) translate(-50%,-135%)';}
+setCap(t);const ch=t<17.4?'Humid air, hard turn':'Very cold air, high altitude';if(ch!==chipT){chipT=ch;$('chip').textContent=ch;}
+if(!drag)sk.value=t;$('tm').textContent=t.toFixed(1)+' / 25 s';audioUpdate(t);}
+function resize(){const w=innerWidth,h=innerHeight;renderer.setPixelRatio(Math.min(devicePixelRatio||1,mobile?1.5:2));renderer.setSize(w,h,false);camera.aspect=w/h;renderer.getDrawingBufferSize(ps2);}
+addEventListener('resize',resize);resize();
+function loop(now){raf=requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000);last=now;
+if(playing){t+=dt;if(t>=T){t=T;playing=false;ended=true;setUI();}}update(t);renderer.render(scene,camera);}
+addEventListener('pagehide',()=>{cancelAnimationFrame(raf);if(ac)ac.close();renderer.dispose();});
+update(0);renderer.render(scene,camera);setUI();
+$('lmsg').textContent='Ready. Sound is a synthesized jet-like tone, not a recording.';$('go').hidden=false;raf=requestAnimationFrame(loop);
+}
+main().catch(e=>{console.error(e);fail('Something went wrong: '+(e&&e.message||e));});
+</script>
+</body>
+</html>
